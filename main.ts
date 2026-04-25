@@ -26,6 +26,8 @@ class SensorAudioSynthesizer {
         time: number[] 
     } = { accX: [], accY: [], accZ: [], gyroX: [], gyroY: [], gyroZ: [], time: [] };
     private maxDataPoints = 500;
+    private lastDrawTime = 0;
+    private drawInterval = 16; // 约60fps
     
     constructor() {
         this.canvas = document.getElementById('chart') as HTMLCanvasElement;
@@ -125,8 +127,8 @@ class SensorAudioSynthesizer {
             this.oscillators.triangle.start();
             this.oscillators.square.start();
             
-            window.addEventListener('devicemotion', this.handleMotion, true);
-            window.addEventListener('deviceorientation', this.handleOrientation, true);
+            window.addEventListener('devicemotion', this.handleMotion, { passive: true });
+            window.addEventListener('deviceorientation', this.handleOrientation, { passive: true });
             
             this.isRunning = true;
             this.updateStatus('✓ 运行中 - 移动设备以产生声音');
@@ -260,8 +262,6 @@ class SensorAudioSynthesizer {
     };
     
     private handleMotion = (event: DeviceMotionEvent) => {
-        console.log('Motion event:', event);
-        
         const acc = event.acceleration || event.accelerationIncludingGravity;
         if (!acc || !this.gainNodes) return;
         
@@ -274,11 +274,13 @@ class SensorAudioSynthesizer {
         const volumeY = Math.min(y / maxAcc, 1) * 0.3;
         const volumeZ = Math.min(z / maxAcc, 1) * 0.3;
         
+        // 立即设置音量,不使用ramp以提高响应速度
         const currentTime = this.audioContext!.currentTime;
-        this.gainNodes.sine.gain.linearRampToValueAtTime(volumeX, currentTime + 0.1);
-        this.gainNodes.triangle.gain.linearRampToValueAtTime(volumeY, currentTime + 0.1);
-        this.gainNodes.square.gain.linearRampToValueAtTime(volumeZ, currentTime + 0.1);
+        this.gainNodes.sine.gain.setTargetAtTime(volumeX, currentTime, 0.01);
+        this.gainNodes.triangle.gain.setTargetAtTime(volumeY, currentTime, 0.01);
+        this.gainNodes.square.gain.setTargetAtTime(volumeZ, currentTime, 0.01);
         
+        // 更新显示
         this.updateDisplay('accX', x.toFixed(2));
         this.updateDisplay('accY', y.toFixed(2));
         this.updateDisplay('accZ', z.toFixed(2));
@@ -287,8 +289,6 @@ class SensorAudioSynthesizer {
     };
     
     private handleOrientation = (event: DeviceOrientationEvent) => {
-        console.log('Orientation event:', event);
-        
         if (!this.oscillators) return;
         
         const alpha = event.alpha || 0;
@@ -302,10 +302,11 @@ class SensorAudioSynthesizer {
         // gamma: -90到90度 (左右倾斜)
         const freqZ = this.mapRange(gamma, -90, 90, 400, 1200);
         
+        // 立即设置频率,不使用ramp以提高响应速度
         const currentTime = this.audioContext!.currentTime;
-        this.oscillators.sine.frequency.linearRampToValueAtTime(freqX, currentTime + 0.1);
-        this.oscillators.triangle.frequency.linearRampToValueAtTime(freqY, currentTime + 0.1);
-        this.oscillators.square.frequency.linearRampToValueAtTime(freqZ, currentTime + 0.1);
+        this.oscillators.sine.frequency.setTargetAtTime(freqX, currentTime, 0.01);
+        this.oscillators.triangle.frequency.setTargetAtTime(freqY, currentTime, 0.01);
+        this.oscillators.square.frequency.setTargetAtTime(freqZ, currentTime, 0.01);
         
         this.updateDisplay('gyroX', alpha.toFixed(1));
         this.updateDisplay('gyroY', beta.toFixed(1));
@@ -337,7 +338,12 @@ class SensorAudioSynthesizer {
             this.dataHistory.time.shift();
         }
         
-        this.drawChart();
+        // 限制绘制频率以提高性能
+        const now = Date.now();
+        if (now - this.lastDrawTime >= this.drawInterval) {
+            this.drawChart();
+            this.lastDrawTime = now;
+        }
     }
     
     private drawChart() {
