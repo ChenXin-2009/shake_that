@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>传感器音频合成器</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>传感器音频合成器</h1>
+        
+        <div class="status" id="status">
+            <p>点击开始按钮启动</p>
+        </div>
+
+        <button id="startBtn" class="start-btn">开始</button>
+        <button id="stopBtn" class="stop-btn" style="display: none;">停止</button>
+        <button id="diagBtn" class="start-btn" style="background: #2196F3; margin-top: 10px;">设备诊断</button>
+
+        <div class="info-panel">
+            <div class="info-item">
+                <h3>加速度 (音量)</h3>
+                <div class="values">
+                    <span>X: <span id="accX">0</span> m/s²</span>
+                    <span>Y: <span id="accY">0</span> m/s²</span>
+                    <span>Z: <span id="accZ">0</span> m/s²</span>
+                </div>
+            </div>
+            <div class="info-item">
+                <h3>陀螺仪 (音高)</h3>
+                <div class="values">
+                    <span>α: <span id="gyroX">0</span>°/s</span>
+                    <span>β: <span id="gyroY">0</span>°/s</span>
+                    <span>γ: <span id="gyroZ">0</span>°/s</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h3>传感器数据历史</h3>
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+    <script type="module" src="main.ts"></script>
+</body>
+</html>
