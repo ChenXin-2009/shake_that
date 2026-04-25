@@ -335,18 +335,23 @@ class SensorAudioSynthesizer {
         this.recordedGainNode.gain.value = 0;
         this.recordedGainNode.connect(this.audioContext.destination);
         
-        // 立即启动第一个源
-        this.scheduleAudioSource();
+        // 立即启动多个源,形成密集重叠
+        // 每隔很短的时间启动一个新源
+        const scheduleInterval = 50; // 50ms启动一个新源,形成密集重叠
         
-        // 每隔一定时间启动新的播放源,形成重叠
-        // 使用录音时长的1/3作为间隔,确保有足够重叠
-        const scheduleInterval = Math.max(duration * 1000 / 3, 100); // 至少100ms
+        // 立即启动第一批源
+        for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+                this.scheduleAudioSource();
+            }, i * scheduleInterval);
+        }
         
+        // 持续启动新源
         this.sourceScheduleInterval = window.setInterval(() => {
             this.scheduleAudioSource();
         }, scheduleInterval);
         
-        console.log(`录音播放已启动,每${scheduleInterval.toFixed(0)}ms启动新源`);
+        console.log(`录音播放已启动,每${scheduleInterval}ms启动新源`);
     }
     
     private scheduleAudioSource() {
@@ -356,7 +361,11 @@ class SensorAudioSynthesizer {
         source.buffer = this.recordedAudioBuffer;
         source.playbackRate.value = 1.0;
         
-        source.connect(this.recordedGainNode);
+        // 连接到共享的增益节点,音量会被平均分配
+        const sourceGain = this.audioContext.createGain();
+        sourceGain.gain.value = 0.2; // 降低单个源的音量,避免叠加过响
+        
+        source.connect(sourceGain).connect(this.recordedGainNode);
         
         // 播放完成后从数组中移除
         source.onended = () => {
@@ -369,8 +378,8 @@ class SensorAudioSynthesizer {
         source.start(0);
         this.audioSources.push(source);
         
-        // 限制同时播放的源数量,避免内存泄漏
-        if (this.audioSources.length > 10) {
+        // 限制同时播放的源数量
+        if (this.audioSources.length > 20) {
             const oldSource = this.audioSources.shift();
             if (oldSource) {
                 try {
