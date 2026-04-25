@@ -18,10 +18,11 @@ class SensorAudioSynthesizer {
     private mediaRecorder: MediaRecorder | null = null;
     private audioChunks: Blob[] = [];
     private recordedAudioBuffer: AudioBuffer | null = null;
-    private audioSource: AudioBufferSourceNode | null = null;
+    private audioSources: AudioBufferSourceNode[] = [];
     private recordedGainNode: GainNode | null = null;
     private isRecording = false;
     private useRecordedAudioMode = false;
+    private sourceScheduleInterval: number | null = null;
     
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
@@ -183,9 +184,22 @@ class SensorAudioSynthesizer {
             this.oscillators.square.stop();
         }
         
-        if (this.audioSource) {
-            this.audioSource.stop();
-            this.audioSource = null;
+        // 停止所有录音播放源
+        if (this.audioSources.length > 0) {
+            this.audioSources.forEach(source => {
+                try {
+                    source.stop();
+                } catch (e) {
+                    // 忽略已停止的源
+                }
+            });
+            this.audioSources = [];
+        }
+        
+        // 清除定时器
+        if (this.sourceScheduleInterval) {
+            clearInterval(this.sourceScheduleInterval);
+            this.sourceScheduleInterval = null;
         }
         
         if (this.audioContext) {
@@ -313,26 +327,59 @@ class SensorAudioSynthesizer {
             return;
         }
         
-        console.log('启动录音播放,时长:', this.recordedAudioBuffer.duration, '秒');
+        const duration = this.recordedAudioBuffer.duration;
+        console.log('启动重叠播放模式,录音时长:', duration, '秒');
         
-        // 创建循环播放的音频源
-        this.audioSource = this.audioContext.createBufferSource();
-        this.audioSource.buffer = this.recordedAudioBuffer;
-        this.audioSource.loop = true;
-        this.audioSource.loopStart = 0;
-        this.audioSource.loopEnd = this.recordedAudioBuffer.duration;
-        
+        // 创建增益节点
         this.recordedGainNode = this.audioContext.createGain();
         this.recordedGainNode.gain.value = 0;
+        this.recordedGainNode.connect(this.audioContext.destination);
         
-        this.audioSource.connect(this.recordedGainNode).connect(this.audioContext.destination);
+        // 立即启动第一个源
+        this.scheduleAudioSource();
         
-        // 设置初始播放速度
-        this.audioSource.playbackRate.value = 1.0;
+        // 每隔一定时间启动新的播放源,形成重叠
+        // 使用录音时长的1/3作为间隔,确保有足够重叠
+        const scheduleInterval = Math.max(duration * 1000 / 3, 100); // 至少100ms
         
-        this.audioSource.start(0);
+        this.sourceScheduleInterval = window.setInterval(() => {
+            this.scheduleAudioSource();
+        }, scheduleInterval);
         
-        console.log('录音播放已启动,循环播放已启用');
+        console.log(`录音播放已启动,每${scheduleInterval.toFixed(0)}ms启动新源`);
+    }
+    
+    private scheduleAudioSource() {
+        if (!this.recordedAudioBuffer || !this.audioContext || !this.recordedGainNode) return;
+        
+        const source = this.audioContext.createBufferSource();
+        source.buffer = this.recordedAudioBuffer;
+        source.playbackRate.value = 1.0;
+        
+        source.connect(this.recordedGainNode);
+        
+        // 播放完成后从数组中移除
+        source.onended = () => {
+            const index = this.audioSources.indexOf(source);
+            if (index > -1) {
+                this.audioSources.splice(index, 1);
+            }
+        };
+        
+        source.start(0);
+        this.audioSources.push(source);
+        
+        // 限制同时播放的源数量,避免内存泄漏
+        if (this.audioSources.length > 10) {
+            const oldSource = this.audioSources.shift();
+            if (oldSource) {
+                try {
+                    oldSource.stop();
+                } catch (e) {
+                    // 忽略
+                }
+            }
+        }
     }
     
     private toggleRecordButtons() {
@@ -481,17 +528,22 @@ class SensorAudioSynthesizer {
     };
     
     private handleOrientation = (event: DeviceOrientationEvent) => {
-        if (!this.oscillators && !this.audioSource) return;
+        if (!this.oscillators && this.audioSources.length === 0) return;
         
         const alpha = event.alpha || 0;
         const beta = event.beta || 0;
         const gamma = event.gamma || 0;
         
         // 如果使用录音模式
-        if (this.useRecordedAudioMode && this.audioSource) {
+        if (this.useRecordedAudioMode && this.audioSources.length > 0) {
             // beta: 0度朝上音调高(播放速度快), 180度朝下音调低(播放速度慢)
             const playbackRate = this.mapRange(beta, 0, 180, 2.0, 0.5);
-            this.audioSource.playbackRate.setTargetAtTime(playbackRate, this.audioContext!.currentTime, 0.01);
+            
+            // 更新所有活跃的音频源的播放速度
+            const currentTime = this.audioContext!.currentTime;
+            this.audioSources.forEach(source => {
+                source.playbackRate.setTargetAtTime(playbackRate, currentTime, 0.01);
+            });
             
             this.updateDisplay('gyroX', alpha.toFixed(1));
             this.updateDisplay('gyroY', `${beta.toFixed(1)} (速度:${playbackRate.toFixed(2)}x)`);
