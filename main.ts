@@ -16,8 +16,16 @@ class SensorAudioSynthesizer {
     
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
-    private dataHistory: { acc: number[], gyro: number[], time: number[] } = { acc: [], gyro: [], time: [] };
-    private maxDataPoints = 100;
+    private dataHistory: { 
+        accX: number[], 
+        accY: number[], 
+        accZ: number[], 
+        gyroX: number[], 
+        gyroY: number[], 
+        gyroZ: number[], 
+        time: number[] 
+    } = { accX: [], accY: [], accZ: [], gyroX: [], gyroY: [], gyroZ: [], time: [] };
+    private maxDataPoints = 500;
     
     constructor() {
         this.canvas = document.getElementById('chart') as HTMLCanvasElement;
@@ -132,7 +140,7 @@ class SensorAudioSynthesizer {
             this.updateDisplay('gyroZ', '等待数据...');
             
             setTimeout(() => {
-                if (this.dataHistory.acc.length === 0 && this.dataHistory.gyro.length === 0) {
+                if (this.dataHistory.accX.length === 0 && this.dataHistory.gyroX.length === 0) {
                     this.updateStatus('⚠️ 未检测到传感器数据<br>请尝试其他浏览器');
                 }
             }, 5000);
@@ -239,7 +247,7 @@ class SensorAudioSynthesizer {
         this.updateDisplay('gyroY', (freq * 1.2).toFixed(1));
         this.updateDisplay('gyroZ', (freq * 1.5).toFixed(1));
         
-        this.addDataPoint(x * 10, freq);
+        this.addDataPoint(x * 10, y * 10, 0, freq, freq * 1.2, freq * 1.5);
     };
     
     private handleTouchEnd = () => {
@@ -275,8 +283,7 @@ class SensorAudioSynthesizer {
         this.updateDisplay('accY', y.toFixed(2));
         this.updateDisplay('accZ', z.toFixed(2));
         
-        const totalAcc = Math.sqrt(x*x + y*y + z*z);
-        this.addDataPoint(totalAcc, 0);
+        this.addDataPoint(x, y, z, 0, 0, 0);
     };
     
     private handleOrientation = (event: DeviceOrientationEvent) => {
@@ -288,8 +295,11 @@ class SensorAudioSynthesizer {
         const beta = event.beta || 0;
         const gamma = event.gamma || 0;
         
+        // alpha: 0-360度 (指南针方向)
         const freqX = this.mapRange(alpha, 0, 360, 200, 800);
-        const freqY = this.mapRange(beta, -180, 180, 300, 1000);
+        // beta: 0度朝上音调高, 180度朝下音调低
+        const freqY = this.mapRange(beta, 0, 180, 1000, 300);
+        // gamma: -90到90度 (左右倾斜)
         const freqZ = this.mapRange(gamma, -90, 90, 400, 1200);
         
         const currentTime = this.audioContext!.currentTime;
@@ -301,22 +311,29 @@ class SensorAudioSynthesizer {
         this.updateDisplay('gyroY', beta.toFixed(1));
         this.updateDisplay('gyroZ', gamma.toFixed(1));
         
-        const avgFreq = (freqX + freqY + freqZ) / 3;
-        this.addDataPoint(0, avgFreq);
+        this.addDataPoint(0, 0, 0, alpha, beta, gamma);
     };
     
     private mapRange(value: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
         return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
     }
     
-    private addDataPoint(acc: number, gyro: number) {
-        this.dataHistory.acc.push(acc);
-        this.dataHistory.gyro.push(gyro);
+    private addDataPoint(accX: number, accY: number, accZ: number, gyroX: number, gyroY: number, gyroZ: number) {
+        this.dataHistory.accX.push(accX);
+        this.dataHistory.accY.push(accY);
+        this.dataHistory.accZ.push(accZ);
+        this.dataHistory.gyroX.push(gyroX);
+        this.dataHistory.gyroY.push(gyroY);
+        this.dataHistory.gyroZ.push(gyroZ);
         this.dataHistory.time.push(Date.now());
         
-        if (this.dataHistory.acc.length > this.maxDataPoints) {
-            this.dataHistory.acc.shift();
-            this.dataHistory.gyro.shift();
+        if (this.dataHistory.accX.length > this.maxDataPoints) {
+            this.dataHistory.accX.shift();
+            this.dataHistory.accY.shift();
+            this.dataHistory.accZ.shift();
+            this.dataHistory.gyroX.shift();
+            this.dataHistory.gyroY.shift();
+            this.dataHistory.gyroZ.shift();
             this.dataHistory.time.shift();
         }
         
@@ -330,43 +347,139 @@ class SensorAudioSynthesizer {
         
         this.ctx.clearRect(0, 0, width, height);
         
-        if (this.dataHistory.acc.length < 2) return;
+        if (this.dataHistory.accX.length < 2) return;
         
-        const maxAcc = Math.max(...this.dataHistory.acc, 10);
-        const maxGyro = Math.max(...this.dataHistory.gyro, 1000);
+        const dataLength = this.dataHistory.accX.length;
         
+        // 绘制加速度曲线 (上半部分)
+        const maxAcc = Math.max(
+            ...this.dataHistory.accX, 
+            ...this.dataHistory.accY, 
+            ...this.dataHistory.accZ, 
+            10
+        );
+        
+        const halfHeight = height / 2;
+        
+        // 加速度X - 红色
+        this.ctx.strokeStyle = '#FF5252';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.dataHistory.accX.forEach((value, index) => {
+            const x = (index / dataLength) * width;
+            const y = halfHeight - (value / maxAcc) * halfHeight * 0.8;
+            if (index === 0) this.ctx.moveTo(x, y);
+            else this.ctx.lineTo(x, y);
+        });
+        this.ctx.stroke();
+        
+        // 加速度Y - 绿色
         this.ctx.strokeStyle = '#4CAF50';
-        this.ctx.lineWidth = 2;
+        this.ctx.lineWidth = 1.5;
         this.ctx.beginPath();
-        this.dataHistory.acc.forEach((value, index) => {
-            const x = (index / this.maxDataPoints) * width;
-            const y = height - (value / maxAcc) * height * 0.4;
+        this.dataHistory.accY.forEach((value, index) => {
+            const x = (index / dataLength) * width;
+            const y = halfHeight - (value / maxAcc) * halfHeight * 0.8;
             if (index === 0) this.ctx.moveTo(x, y);
             else this.ctx.lineTo(x, y);
         });
         this.ctx.stroke();
         
+        // 加速度Z - 蓝色
         this.ctx.strokeStyle = '#2196F3';
-        this.ctx.lineWidth = 2;
+        this.ctx.lineWidth = 1.5;
         this.ctx.beginPath();
-        this.dataHistory.gyro.forEach((value, index) => {
-            const x = (index / this.maxDataPoints) * width;
-            const y = height - (value / maxGyro) * height * 0.4 - height * 0.5;
+        this.dataHistory.accZ.forEach((value, index) => {
+            const x = (index / dataLength) * width;
+            const y = halfHeight - (value / maxAcc) * halfHeight * 0.8;
             if (index === 0) this.ctx.moveTo(x, y);
             else this.ctx.lineTo(x, y);
         });
         this.ctx.stroke();
         
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = '12px sans-serif';
-        this.ctx.fillText('加速度', 10, 20);
-        this.ctx.fillStyle = '#4CAF50';
-        this.ctx.fillRect(70, 12, 20, 3);
+        // 绘制陀螺仪曲线 (下半部分)
+        const maxGyroX = Math.max(...this.dataHistory.gyroX, 360);
+        const maxGyroY = Math.max(...this.dataHistory.gyroY, 180);
+        const maxGyroZ = Math.max(...this.dataHistory.gyroZ, 90);
         
+        // 陀螺仪X (alpha) - 橙色
+        this.ctx.strokeStyle = '#FF9800';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.dataHistory.gyroX.forEach((value, index) => {
+            const x = (index / dataLength) * width;
+            const y = halfHeight + (value / maxGyroX) * halfHeight * 0.8;
+            if (index === 0) this.ctx.moveTo(x, y);
+            else this.ctx.lineTo(x, y);
+        });
+        this.ctx.stroke();
+        
+        // 陀螺仪Y (beta) - 紫色
+        this.ctx.strokeStyle = '#9C27B0';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.dataHistory.gyroY.forEach((value, index) => {
+            const x = (index / dataLength) * width;
+            const y = halfHeight + (value / maxGyroY) * halfHeight * 0.8;
+            if (index === 0) this.ctx.moveTo(x, y);
+            else this.ctx.lineTo(x, y);
+        });
+        this.ctx.stroke();
+        
+        // 陀螺仪Z (gamma) - 青色
+        this.ctx.strokeStyle = '#00BCD4';
+        this.ctx.lineWidth = 1.5;
+        this.ctx.beginPath();
+        this.dataHistory.gyroZ.forEach((value, index) => {
+            const x = (index / dataLength) * width;
+            const y = halfHeight + ((value + 90) / (maxGyroZ + 90)) * halfHeight * 0.8;
+            if (index === 0) this.ctx.moveTo(x, y);
+            else this.ctx.lineTo(x, y);
+        });
+        this.ctx.stroke();
+        
+        // 绘制分隔线
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, halfHeight);
+        this.ctx.lineTo(width, halfHeight);
+        this.ctx.stroke();
+        
+        // 绘制图例
+        this.ctx.font = '10px sans-serif';
+        
+        // 加速度图例
         this.ctx.fillStyle = '#fff';
-        this.ctx.fillText('频率', 10, 40);
+        this.ctx.fillText('加速度:', 5, 12);
+        
+        this.ctx.fillStyle = '#FF5252';
+        this.ctx.fillRect(45, 7, 15, 2);
+        this.ctx.fillText('X', 62, 12);
+        
+        this.ctx.fillStyle = '#4CAF50';
+        this.ctx.fillRect(75, 7, 15, 2);
+        this.ctx.fillText('Y', 92, 12);
+        
         this.ctx.fillStyle = '#2196F3';
-        this.ctx.fillRect(70, 32, 20, 3);
+        this.ctx.fillRect(105, 7, 15, 2);
+        this.ctx.fillText('Z', 122, 12);
+        
+        // 陀螺仪图例
+        this.ctx.fillStyle = '#fff';
+        this.ctx.fillText('陀螺仪:', 5, height - 5);
+        
+        this.ctx.fillStyle = '#FF9800';
+        this.ctx.fillRect(45, height - 10, 15, 2);
+        this.ctx.fillText('α', 62, height - 5);
+        
+        this.ctx.fillStyle = '#9C27B0';
+        this.ctx.fillRect(75, height - 10, 15, 2);
+        this.ctx.fillText('β', 92, height - 5);
+        
+        this.ctx.fillStyle = '#00BCD4';
+        this.ctx.fillRect(105, height - 10, 15, 2);
+        this.ctx.fillText('γ', 122, height - 5);
     }
     
     private updateDisplay(id: string, value: string) {
