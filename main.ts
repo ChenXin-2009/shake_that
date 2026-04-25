@@ -201,66 +201,104 @@ class SensorAudioSynthesizer {
         if (this.isRecording) return;
         
         try {
+            console.log('请求麦克风权限...');
+            this.updateStatus('请求麦克风权限...');
+            
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('麦克风权限已授予');
+            
             this.mediaRecorder = new MediaRecorder(stream);
             this.audioChunks = [];
             
             this.mediaRecorder.ondataavailable = (event) => {
+                console.log('收到音频数据:', event.data.size, 'bytes');
                 this.audioChunks.push(event.data);
             };
             
             this.mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-                const arrayBuffer = await audioBlob.arrayBuffer();
+                console.log('录音停止,处理音频数据...');
+                this.updateStatus('处理录音数据...');
                 
-                // 创建音频上下文如果不存在
-                if (!this.audioContext) {
-                    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                try {
+                    const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                    console.log('音频Blob大小:', audioBlob.size, 'bytes');
+                    
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    console.log('ArrayBuffer大小:', arrayBuffer.byteLength, 'bytes');
+                    
+                    // 创建音频上下文如果不存在
+                    if (!this.audioContext) {
+                        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                    }
+                    
+                    this.recordedAudio = await this.audioContext.decodeAudioData(arrayBuffer);
+                    console.log('音频解码成功,时长:', this.recordedAudio.duration, '秒');
+                    
+                    this.updateStatus(`✓ 录音完成 (${this.recordedAudio.duration.toFixed(1)}秒)<br>点击"使用录音"按钮`);
+                    
+                    // 停止麦克风
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // 显示使用录音按钮
+                    const useRecBtn = document.getElementById('useRecBtn') as HTMLButtonElement;
+                    if (useRecBtn) {
+                        useRecBtn.style.display = 'block';
+                        console.log('显示"使用录音"按钮');
+                    }
+                } catch (decodeError) {
+                    console.error('音频解码失败:', decodeError);
+                    this.updateStatus(`❌ 音频解码失败: ${decodeError}`);
                 }
-                
-                this.recordedAudio = await this.audioContext.decodeAudioData(arrayBuffer);
-                this.updateStatus('✓ 录音完成,点击"使用录音"按钮');
-                
-                // 停止麦克风
-                stream.getTracks().forEach(track => track.stop());
-                
-                // 显示使用录音按钮
-                const useRecBtn = document.getElementById('useRecBtn') as HTMLButtonElement;
-                if (useRecBtn) useRecBtn.style.display = 'block';
+            };
+            
+            this.mediaRecorder.onerror = (event: any) => {
+                console.error('录音错误:', event.error);
+                this.updateStatus(`❌ 录音错误: ${event.error}`);
             };
             
             this.mediaRecorder.start();
             this.isRecording = true;
-            this.updateStatus('🔴 录音中...');
+            this.updateStatus('🔴 录音中... 请说话');
             this.toggleRecordButtons();
             
+            console.log('录音已开始');
+            
         } catch (error: any) {
-            this.updateStatus(`❌ 录音失败: ${error?.message || error}`);
             console.error('录音失败:', error);
+            this.updateStatus(`❌ 录音失败: ${error?.message || error}`);
         }
     }
     
     stopRecording() {
-        if (!this.isRecording || !this.mediaRecorder) return;
+        if (!this.isRecording || !this.mediaRecorder) {
+            console.log('没有正在进行的录音');
+            return;
+        }
         
+        console.log('停止录音...');
         this.mediaRecorder.stop();
         this.isRecording = false;
         this.toggleRecordButtons();
     }
     
     useRecordedAudio() {
+        console.log('切换到录音模式, recordedAudio:', this.recordedAudio);
+        
         if (!this.recordedAudio) {
             this.updateStatus('❌ 没有录音可用');
+            console.error('没有录音数据');
             return;
         }
         
         // 停止当前播放
         if (this.isRunning) {
+            console.log('停止当前播放');
             this.stop();
         }
         
         this.useRecordedAudio = true;
-        this.updateStatus('✓ 已切换到录音模式,点击"开始"');
+        this.updateStatus(`✓ 已切换到录音模式 (${this.recordedAudio.duration.toFixed(1)}秒)<br>点击"开始"按钮`);
+        console.log('已切换到录音模式');
     }
     
     useSynthesizer() {
@@ -269,7 +307,12 @@ class SensorAudioSynthesizer {
     }
     
     private startRecordedAudioPlayback() {
-        if (!this.recordedAudio || !this.audioContext) return;
+        if (!this.recordedAudio || !this.audioContext) {
+            console.error('无法启动录音播放: recordedAudio或audioContext为空');
+            return;
+        }
+        
+        console.log('启动录音播放,时长:', this.recordedAudio.duration, '秒');
         
         // 创建循环播放的音频源
         this.audioSource = this.audioContext.createBufferSource();
@@ -281,6 +324,8 @@ class SensorAudioSynthesizer {
         
         this.audioSource.connect(this.recordedGainNode).connect(this.audioContext.destination);
         this.audioSource.start();
+        
+        console.log('录音播放已启动');
     }
     
     private toggleRecordButtons() {
@@ -400,7 +445,7 @@ class SensorAudioSynthesizer {
             const currentTime = this.audioContext!.currentTime;
             this.recordedGainNode.gain.setTargetAtTime(volume, currentTime, 0.01);
             
-            this.updateDisplay('accX', x.toFixed(2));
+            this.updateDisplay('accX', `${x.toFixed(2)} (总:${totalAcc.toFixed(2)})`);
             this.updateDisplay('accY', y.toFixed(2));
             this.updateDisplay('accZ', z.toFixed(2));
             
