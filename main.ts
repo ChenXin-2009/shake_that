@@ -95,11 +95,9 @@ class SensorAudioSynthesizer {
                 }
             }
             
-            // 如果不支持传感器,使用触摸控制
+            // 如果不支持传感器,报错
             if (!hasMotion && !hasOrientation) {
-                this.updateStatus('⚠️ 不支持传感器,已切换到触摸控制模式');
-                this.startTouchMode();
-                return;
+                throw new Error('设备不支持传感器API,请在支持传感器的手机上使用');
             }
             
             // 初始化音频
