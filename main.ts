@@ -17,11 +17,11 @@ class SensorAudioSynthesizer {
     // 录音相关
     private mediaRecorder: MediaRecorder | null = null;
     private audioChunks: Blob[] = [];
-    private recordedAudio: AudioBuffer | null = null;
+    private recordedAudioBuffer: AudioBuffer | null = null;
     private audioSource: AudioBufferSourceNode | null = null;
     private recordedGainNode: GainNode | null = null;
     private isRecording = false;
-    private useRecordedAudio = false;
+    private useRecordedAudioMode = false;
     
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
@@ -105,7 +105,7 @@ class SensorAudioSynthesizer {
             this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
             
             // 如果使用录制的音频
-            if (this.useRecordedAudio && this.recordedAudio) {
+            if (this.useRecordedAudioMode && this.recordedAudioBuffer) {
                 this.startRecordedAudioPlayback();
             } else {
                 // 使用合成器
@@ -146,7 +146,7 @@ class SensorAudioSynthesizer {
             window.addEventListener('deviceorientation', this.handleOrientation, { passive: true });
             
             this.isRunning = true;
-            const mode = this.useRecordedAudio ? '录音' : '合成器';
+            const mode = this.useRecordedAudioMode ? '录音' : '合成器';
             this.updateStatus(`✓ 运行中 (${mode}模式) - 移动设备以产生声音`);
             this.toggleButtons();
             
@@ -231,10 +231,10 @@ class SensorAudioSynthesizer {
                         this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
                     }
                     
-                    this.recordedAudio = await this.audioContext.decodeAudioData(arrayBuffer);
-                    console.log('音频解码成功,时长:', this.recordedAudio.duration, '秒');
+                    this.recordedAudioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                    console.log('音频解码成功,时长:', this.recordedAudioBuffer.duration, '秒');
                     
-                    this.updateStatus(`✓ 录音完成 (${this.recordedAudio.duration.toFixed(1)}秒)<br>点击"使用录音"按钮`);
+                    this.updateStatus(`✓ 录音完成 (${this.recordedAudioBuffer.duration.toFixed(1)}秒)<br>点击"使用录音"按钮`);
                     
                     // 停止麦克风
                     stream.getTracks().forEach(track => track.stop());
@@ -281,10 +281,10 @@ class SensorAudioSynthesizer {
         this.toggleRecordButtons();
     }
     
-    useRecordedAudio() {
-        console.log('切换到录音模式, recordedAudio:', this.recordedAudio);
+    switchToRecordedAudio() {
+        console.log('切换到录音模式, recordedAudioBuffer:', this.recordedAudioBuffer);
         
-        if (!this.recordedAudio) {
+        if (!this.recordedAudioBuffer) {
             this.updateStatus('❌ 没有录音可用');
             console.error('没有录音数据');
             return;
@@ -296,27 +296,28 @@ class SensorAudioSynthesizer {
             this.stop();
         }
         
-        this.useRecordedAudio = true;
-        this.updateStatus(`✓ 已切换到录音模式 (${this.recordedAudio.duration.toFixed(1)}秒)<br>点击"开始"按钮`);
+        this.useRecordedAudioMode = true;
+        this.updateStatus(`✓ 已切换到录音模式 (${this.recordedAudioBuffer.duration.toFixed(1)}秒)<br>点击"开始"按钮`);
         console.log('已切换到录音模式');
     }
     
-    useSynthesizer() {
-        this.useRecordedAudio = false;
+    switchToSynthesizer() {
+        this.useRecordedAudioMode = false;
         this.updateStatus('✓ 已切换到合成器模式');
+        console.log('已切换到合成器模式');
     }
     
     private startRecordedAudioPlayback() {
-        if (!this.recordedAudio || !this.audioContext) {
-            console.error('无法启动录音播放: recordedAudio或audioContext为空');
+        if (!this.recordedAudioBuffer || !this.audioContext) {
+            console.error('无法启动录音播放: recordedAudioBuffer或audioContext为空');
             return;
         }
         
-        console.log('启动录音播放,时长:', this.recordedAudio.duration, '秒');
+        console.log('启动录音播放,时长:', this.recordedAudioBuffer.duration, '秒');
         
         // 创建循环播放的音频源
         this.audioSource = this.audioContext.createBufferSource();
-        this.audioSource.buffer = this.recordedAudio;
+        this.audioSource.buffer = this.recordedAudioBuffer;
         this.audioSource.loop = true;
         
         this.recordedGainNode = this.audioContext.createGain();
@@ -436,7 +437,7 @@ class SensorAudioSynthesizer {
         const z = Math.abs(acc.z || 0);
         
         // 如果使用录制的音频
-        if (this.useRecordedAudio && this.recordedGainNode) {
+        if (this.useRecordedAudioMode && this.recordedGainNode) {
             // 合并三个加速度为一个总音量
             const totalAcc = Math.sqrt(x*x + y*y + z*z);
             const maxAcc = 30;
@@ -726,8 +727,8 @@ function init() {
     document.getElementById('diagBtn')?.addEventListener('click', runDiagnostics);
     document.getElementById('startRecBtn')?.addEventListener('click', () => app.startRecording());
     document.getElementById('stopRecBtn')?.addEventListener('click', () => app.stopRecording());
-    document.getElementById('useRecBtn')?.addEventListener('click', () => app.useRecordedAudio());
-    document.getElementById('useSynthBtn')?.addEventListener('click', () => app.useSynthesizer());
+    document.getElementById('useRecBtn')?.addEventListener('click', () => app.switchToRecordedAudio());
+    document.getElementById('useSynthBtn')?.addEventListener('click', () => app.switchToSynthesizer());
 }
 
 function runDiagnostics() {
