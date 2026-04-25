@@ -1,7 +1,23 @@
 {
   "name": "sensor-audio-synthesizer",
   "version": "1.0.0",
+  "description": "A web application that uses mobile device sensors to control audio synthesis",
   "type": "module",
+  "author": "ChenXin-2009",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChenXin-2009/shake_that.git"
+  },
+  "keywords": [
+    "sensor",
+    "audio",
+    "synthesizer",
+    "web-audio",
+    "device-motion",
+    "accelerometer",
+    "gyroscope"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",

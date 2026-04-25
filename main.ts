@@ -1,3 +1,13 @@
+/**
+ * Sensor Audio Synthesizer
+ * 
+ * A web application that uses mobile device sensors to control audio synthesis.
+ * 
+ * @author ChenXin-2009
+ * @license MIT
+ * @copyright 2026 ChenXin-2009
+ */
+
 class SensorAudioSynthesizer {
     private audioContext: AudioContext | null = null;
     private oscillators: { sine: OscillatorNode; triangle: OscillatorNode; square: OscillatorNode } | null = null;

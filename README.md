@@ -1,4 +1,4 @@
-# 传感器音频合成器
+# 传感器音频合成器 (Sensor Audio Synthesizer)
 
 一个使用手机传感器控制音频的Web应用。
 
@@ -38,3 +38,17 @@ npm run dev
 ## 部署
 
 部署到Vercel或其他支持HTTPS的平台。
+
+## 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+Copyright (c) 2026 ChenXin-2009
+
+## 作者
+
+ChenXin-2009
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request!
