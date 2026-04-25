@@ -14,6 +14,15 @@ class SensorAudioSynthesizer {
     private gainNodes: { sine: GainNode; triangle: GainNode; square: GainNode } | null = null;
     private isRunning = false;
     
+    // 录音相关
+    private mediaRecorder: MediaRecorder | null = null;
+    private audioChunks: Blob[] = [];
+    private recordedAudio: AudioBuffer | null = null;
+    private audioSource: AudioBufferSourceNode | null = null;
+    private recordedGainNode: GainNode | null = null;
+    private isRecording = false;
+    private useRecordedAudio = false;
+    
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private dataHistory: { 
@@ -95,43 +104,50 @@ class SensorAudioSynthesizer {
             // 初始化音频
             this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
             
-            this.oscillators = {
-                sine: this.audioContext.createOscillator(),
-                triangle: this.audioContext.createOscillator(),
-                square: this.audioContext.createOscillator()
-            };
-            
-            this.gainNodes = {
-                sine: this.audioContext.createGain(),
-                triangle: this.audioContext.createGain(),
-                square: this.audioContext.createGain()
-            };
-            
-            this.oscillators.sine.type = 'sine';
-            this.oscillators.triangle.type = 'triangle';
-            this.oscillators.square.type = 'square';
-            
-            this.oscillators.sine.frequency.value = 440;
-            this.oscillators.triangle.frequency.value = 550;
-            this.oscillators.square.frequency.value = 660;
-            
-            this.oscillators.sine.connect(this.gainNodes.sine).connect(this.audioContext.destination);
-            this.oscillators.triangle.connect(this.gainNodes.triangle).connect(this.audioContext.destination);
-            this.oscillators.square.connect(this.gainNodes.square).connect(this.audioContext.destination);
-            
-            this.gainNodes.sine.gain.value = 0;
-            this.gainNodes.triangle.gain.value = 0;
-            this.gainNodes.square.gain.value = 0;
-            
-            this.oscillators.sine.start();
-            this.oscillators.triangle.start();
-            this.oscillators.square.start();
+            // 如果使用录制的音频
+            if (this.useRecordedAudio && this.recordedAudio) {
+                this.startRecordedAudioPlayback();
+            } else {
+                // 使用合成器
+                this.oscillators = {
+                    sine: this.audioContext.createOscillator(),
+                    triangle: this.audioContext.createOscillator(),
+                    square: this.audioContext.createOscillator()
+                };
+                
+                this.gainNodes = {
+                    sine: this.audioContext.createGain(),
+                    triangle: this.audioContext.createGain(),
+                    square: this.audioContext.createGain()
+                };
+                
+                this.oscillators.sine.type = 'sine';
+                this.oscillators.triangle.type = 'triangle';
+                this.oscillators.square.type = 'square';
+                
+                this.oscillators.sine.frequency.value = 440;
+                this.oscillators.triangle.frequency.value = 550;
+                this.oscillators.square.frequency.value = 660;
+                
+                this.oscillators.sine.connect(this.gainNodes.sine).connect(this.audioContext.destination);
+                this.oscillators.triangle.connect(this.gainNodes.triangle).connect(this.audioContext.destination);
+                this.oscillators.square.connect(this.gainNodes.square).connect(this.audioContext.destination);
+                
+                this.gainNodes.sine.gain.value = 0;
+                this.gainNodes.triangle.gain.value = 0;
+                this.gainNodes.square.gain.value = 0;
+                
+                this.oscillators.sine.start();
+                this.oscillators.triangle.start();
+                this.oscillators.square.start();
+            }
             
             window.addEventListener('devicemotion', this.handleMotion, { passive: true });
             window.addEventListener('deviceorientation', this.handleOrientation, { passive: true });
             
             this.isRunning = true;
-            this.updateStatus('✓ 运行中 - 移动设备以产生声音');
+            const mode = this.useRecordedAudio ? '录音' : '合成器';
+            this.updateStatus(`✓ 运行中 (${mode}模式) - 移动设备以产生声音`);
             this.toggleButtons();
             
             this.updateDisplay('accX', '等待数据...');
@@ -167,6 +183,11 @@ class SensorAudioSynthesizer {
             this.oscillators.square.stop();
         }
         
+        if (this.audioSource) {
+            this.audioSource.stop();
+            this.audioSource = null;
+        }
+        
         if (this.audioContext) {
             this.audioContext.close();
         }
@@ -174,6 +195,105 @@ class SensorAudioSynthesizer {
         this.isRunning = false;
         this.updateStatus('已停止');
         this.toggleButtons();
+    }
+    
+    async startRecording() {
+        if (this.isRecording) return;
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.mediaRecorder = new MediaRecorder(stream);
+            this.audioChunks = [];
+            
+            this.mediaRecorder.ondataavailable = (event) => {
+                this.audioChunks.push(event.data);
+            };
+            
+            this.mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                
+                // 创建音频上下文如果不存在
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                }
+                
+                this.recordedAudio = await this.audioContext.decodeAudioData(arrayBuffer);
+                this.updateStatus('✓ 录音完成,点击"使用录音"按钮');
+                
+                // 停止麦克风
+                stream.getTracks().forEach(track => track.stop());
+                
+                // 显示使用录音按钮
+                const useRecBtn = document.getElementById('useRecBtn') as HTMLButtonElement;
+                if (useRecBtn) useRecBtn.style.display = 'block';
+            };
+            
+            this.mediaRecorder.start();
+            this.isRecording = true;
+            this.updateStatus('🔴 录音中...');
+            this.toggleRecordButtons();
+            
+        } catch (error: any) {
+            this.updateStatus(`❌ 录音失败: ${error?.message || error}`);
+            console.error('录音失败:', error);
+        }
+    }
+    
+    stopRecording() {
+        if (!this.isRecording || !this.mediaRecorder) return;
+        
+        this.mediaRecorder.stop();
+        this.isRecording = false;
+        this.toggleRecordButtons();
+    }
+    
+    useRecordedAudio() {
+        if (!this.recordedAudio) {
+            this.updateStatus('❌ 没有录音可用');
+            return;
+        }
+        
+        // 停止当前播放
+        if (this.isRunning) {
+            this.stop();
+        }
+        
+        this.useRecordedAudio = true;
+        this.updateStatus('✓ 已切换到录音模式,点击"开始"');
+    }
+    
+    useSynthesizer() {
+        this.useRecordedAudio = false;
+        this.updateStatus('✓ 已切换到合成器模式');
+    }
+    
+    private startRecordedAudioPlayback() {
+        if (!this.recordedAudio || !this.audioContext) return;
+        
+        // 创建循环播放的音频源
+        this.audioSource = this.audioContext.createBufferSource();
+        this.audioSource.buffer = this.recordedAudio;
+        this.audioSource.loop = true;
+        
+        this.recordedGainNode = this.audioContext.createGain();
+        this.recordedGainNode.gain.value = 0;
+        
+        this.audioSource.connect(this.recordedGainNode).connect(this.audioContext.destination);
+        this.audioSource.start();
+    }
+    
+    private toggleRecordButtons() {
+        const startRecBtn = document.getElementById('startRecBtn') as HTMLButtonElement;
+        const stopRecBtn = document.getElementById('stopRecBtn') as HTMLButtonElement;
+        
+        if (this.isRecording) {
+            startRecBtn.style.display = 'none';
+            stopRecBtn.style.display = 'block';
+        } else {
+            startRecBtn.style.display = 'block';
+            stopRecBtn.style.display = 'none';
+        }
     }
     
     private startTouchMode() {
@@ -264,29 +384,47 @@ class SensorAudioSynthesizer {
     
     private handleMotion = (event: DeviceMotionEvent) => {
         const acc = event.acceleration || event.accelerationIncludingGravity;
-        if (!acc || !this.gainNodes) return;
+        if (!acc) return;
         
         const x = Math.abs(acc.x || 0);
         const y = Math.abs(acc.y || 0);
         const z = Math.abs(acc.z || 0);
+        
+        // 如果使用录制的音频
+        if (this.useRecordedAudio && this.recordedGainNode) {
+            // 合并三个加速度为一个总音量
+            const totalAcc = Math.sqrt(x*x + y*y + z*z);
+            const maxAcc = 30;
+            const volume = Math.min(totalAcc / maxAcc, 1);
+            
+            const currentTime = this.audioContext!.currentTime;
+            this.recordedGainNode.gain.setTargetAtTime(volume, currentTime, 0.01);
+            
+            this.updateDisplay('accX', x.toFixed(2));
+            this.updateDisplay('accY', y.toFixed(2));
+            this.updateDisplay('accZ', z.toFixed(2));
+            
+            this.addAccData(x, y, z);
+            return;
+        }
+        
+        // 使用合成音频
+        if (!this.gainNodes) return;
         
         const maxAcc = 20;
         const volumeX = Math.min(x / maxAcc, 1) * 0.3;
         const volumeY = Math.min(y / maxAcc, 1) * 0.3;
         const volumeZ = Math.min(z / maxAcc, 1) * 0.3;
         
-        // 立即设置音量,不使用ramp以提高响应速度
         const currentTime = this.audioContext!.currentTime;
         this.gainNodes.sine.gain.setTargetAtTime(volumeX, currentTime, 0.01);
         this.gainNodes.triangle.gain.setTargetAtTime(volumeY, currentTime, 0.01);
         this.gainNodes.square.gain.setTargetAtTime(volumeZ, currentTime, 0.01);
         
-        // 更新显示
         this.updateDisplay('accX', x.toFixed(2));
         this.updateDisplay('accY', y.toFixed(2));
         this.updateDisplay('accZ', z.toFixed(2));
         
-        // 只记录加速度数据
         this.addAccData(x, y, z);
     };
     
@@ -541,6 +679,10 @@ function init() {
     document.getElementById('startBtn')?.addEventListener('click', () => app.start());
     document.getElementById('stopBtn')?.addEventListener('click', () => app.stop());
     document.getElementById('diagBtn')?.addEventListener('click', runDiagnostics);
+    document.getElementById('startRecBtn')?.addEventListener('click', () => app.startRecording());
+    document.getElementById('stopRecBtn')?.addEventListener('click', () => app.stopRecording());
+    document.getElementById('useRecBtn')?.addEventListener('click', () => app.useRecordedAudio());
+    document.getElementById('useSynthBtn')?.addEventListener('click', () => app.useSynthesizer());
 }
 
 function runDiagnostics() {
