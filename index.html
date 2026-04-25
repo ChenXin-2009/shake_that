@@ -13,6 +13,7 @@
 <body>
     <div class="container">
         <h1>传感器音频合成器</h1>
+        <div class="subtitle">by CXin</div>
         
         <div class="status" id="status">
             <p>点击开始按钮启动</p>
@@ -20,14 +21,14 @@
 
         <button id="startBtn" class="start-btn">开始</button>
         <button id="stopBtn" class="stop-btn" style="display: none;">停止</button>
-        <button id="diagBtn" class="start-btn" style="background: #2196F3; margin-top: 10px;">设备诊断</button>
+        <button id="diagBtn" class="start-btn" style="background: #fff; color: #000; border: 2px solid #e0e0e0; margin-top: 10px;">设备诊断</button>
         
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2);">
-            <h2 style="font-size: 18px; margin-bottom: 10px;">录音控制</h2>
-            <button id="startRecBtn" class="start-btn" style="background: #E91E63;">开始录音</button>
-            <button id="stopRecBtn" class="stop-btn" style="background: #9C27B0; display: none;">停止录音</button>
-            <button id="useRecBtn" class="start-btn" style="background: #FF9800; margin-top: 10px; display: none;">使用录音</button>
-            <button id="useSynthBtn" class="start-btn" style="background: #4CAF50; margin-top: 10px;">使用合成器</button>
+        <div class="recording-section">
+            <h2>录音控制</h2>
+            <button id="startRecBtn" class="start-btn">开始录音</button>
+            <button id="stopRecBtn" class="stop-btn" style="display: none;">停止录音</button>
+            <button id="useRecBtn" class="start-btn" style="display: none;">使用录音</button>
+            <button id="useSynthBtn" class="start-btn">使用合成器</button>
         </div>
 
         <div class="info-panel">
