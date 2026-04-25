@@ -319,14 +319,20 @@ class SensorAudioSynthesizer {
         this.audioSource = this.audioContext.createBufferSource();
         this.audioSource.buffer = this.recordedAudioBuffer;
         this.audioSource.loop = true;
+        this.audioSource.loopStart = 0;
+        this.audioSource.loopEnd = this.recordedAudioBuffer.duration;
         
         this.recordedGainNode = this.audioContext.createGain();
         this.recordedGainNode.gain.value = 0;
         
         this.audioSource.connect(this.recordedGainNode).connect(this.audioContext.destination);
-        this.audioSource.start();
         
-        console.log('录音播放已启动');
+        // 设置初始播放速度
+        this.audioSource.playbackRate.value = 1.0;
+        
+        this.audioSource.start(0);
+        
+        console.log('录音播放已启动,循环播放已启用');
     }
     
     private toggleRecordButtons() {
@@ -475,11 +481,28 @@ class SensorAudioSynthesizer {
     };
     
     private handleOrientation = (event: DeviceOrientationEvent) => {
-        if (!this.oscillators) return;
+        if (!this.oscillators && !this.audioSource) return;
         
         const alpha = event.alpha || 0;
         const beta = event.beta || 0;
         const gamma = event.gamma || 0;
+        
+        // 如果使用录音模式
+        if (this.useRecordedAudioMode && this.audioSource) {
+            // beta: 0度朝上音调高(播放速度快), 180度朝下音调低(播放速度慢)
+            const playbackRate = this.mapRange(beta, 0, 180, 2.0, 0.5);
+            this.audioSource.playbackRate.setTargetAtTime(playbackRate, this.audioContext!.currentTime, 0.01);
+            
+            this.updateDisplay('gyroX', alpha.toFixed(1));
+            this.updateDisplay('gyroY', `${beta.toFixed(1)} (速度:${playbackRate.toFixed(2)}x)`);
+            this.updateDisplay('gyroZ', gamma.toFixed(1));
+            
+            this.addGyroData(alpha, beta, gamma);
+            return;
+        }
+        
+        // 使用合成器模式
+        if (!this.oscillators) return;
         
         // alpha: 0-360度 (指南针方向)
         const freqX = this.mapRange(alpha, 0, 360, 200, 800);
@@ -498,7 +521,6 @@ class SensorAudioSynthesizer {
         this.updateDisplay('gyroY', beta.toFixed(1));
         this.updateDisplay('gyroZ', gamma.toFixed(1));
         
-        // 只记录陀螺仪数据
         this.addGyroData(alpha, beta, gamma);
     };
     
