@@ -27,7 +27,7 @@ class SensorAudioSynthesizer {
     } = { accX: [], accY: [], accZ: [], gyroX: [], gyroY: [], gyroZ: [], time: [] };
     private maxDataPoints = 500;
     private lastDrawTime = 0;
-    private drawInterval = 16; // 约60fps
+    private drawInterval = 33; // 30fps
     
     constructor() {
         this.canvas = document.getElementById('chart') as HTMLCanvasElement;
@@ -249,7 +249,8 @@ class SensorAudioSynthesizer {
         this.updateDisplay('gyroY', (freq * 1.2).toFixed(1));
         this.updateDisplay('gyroZ', (freq * 1.5).toFixed(1));
         
-        this.addDataPoint(x * 10, y * 10, 0, freq, freq * 1.2, freq * 1.5);
+        this.addAccData(x * 10, y * 10, 0);
+        this.addGyroData(freq, freq * 1.2, freq * 1.5);
     };
     
     private handleTouchEnd = () => {
@@ -285,7 +286,8 @@ class SensorAudioSynthesizer {
         this.updateDisplay('accY', y.toFixed(2));
         this.updateDisplay('accZ', z.toFixed(2));
         
-        this.addDataPoint(x, y, z, 0, 0, 0);
+        // 只记录加速度数据
+        this.addAccData(x, y, z);
     };
     
     private handleOrientation = (event: DeviceOrientationEvent) => {
@@ -312,32 +314,45 @@ class SensorAudioSynthesizer {
         this.updateDisplay('gyroY', beta.toFixed(1));
         this.updateDisplay('gyroZ', gamma.toFixed(1));
         
-        this.addDataPoint(0, 0, 0, alpha, beta, gamma);
+        // 只记录陀螺仪数据
+        this.addGyroData(alpha, beta, gamma);
     };
     
     private mapRange(value: number, inMin: number, inMax: number, outMin: number, outMax: number): number {
         return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
     }
     
-    private addDataPoint(accX: number, accY: number, accZ: number, gyroX: number, gyroY: number, gyroZ: number) {
-        this.dataHistory.accX.push(accX);
-        this.dataHistory.accY.push(accY);
-        this.dataHistory.accZ.push(accZ);
-        this.dataHistory.gyroX.push(gyroX);
-        this.dataHistory.gyroY.push(gyroY);
-        this.dataHistory.gyroZ.push(gyroZ);
-        this.dataHistory.time.push(Date.now());
+    private addAccData(x: number, y: number, z: number) {
+        this.dataHistory.accX.push(x);
+        this.dataHistory.accY.push(y);
+        this.dataHistory.accZ.push(z);
         
         if (this.dataHistory.accX.length > this.maxDataPoints) {
             this.dataHistory.accX.shift();
             this.dataHistory.accY.shift();
             this.dataHistory.accZ.shift();
+        }
+        
+        this.requestDraw();
+    }
+    
+    private addGyroData(alpha: number, beta: number, gamma: number) {
+        this.dataHistory.gyroX.push(alpha);
+        this.dataHistory.gyroY.push(beta);
+        this.dataHistory.gyroZ.push(gamma);
+        this.dataHistory.time.push(Date.now());
+        
+        if (this.dataHistory.gyroX.length > this.maxDataPoints) {
             this.dataHistory.gyroX.shift();
             this.dataHistory.gyroY.shift();
             this.dataHistory.gyroZ.shift();
             this.dataHistory.time.shift();
         }
         
+        this.requestDraw();
+    }
+    
+    private requestDraw() {
         // 限制绘制频率以提高性能
         const now = Date.now();
         if (now - this.lastDrawTime >= this.drawInterval) {
